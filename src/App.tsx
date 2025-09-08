@@ -437,9 +437,34 @@ function App() {
     <div className="App">
       {contextHolder}
       <div className="page-container">
-        <Title level={2} className="page-title">
-          TPS Subgraph 数据查询系统
-        </Title>
+        <div
+          style={{
+            textAlign: "center",
+            marginBottom: 30,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Button 
+            type="primary" 
+            onClick={() => navigate('/hex-converter')}
+          >
+            数据转化
+          </Button>
+          <Title
+            level={2}
+            style={{
+              margin: 0,
+              color: "#2c3e50",
+              flex: 1,
+              textAlign: "center",
+            }}
+          >
+            TPS Subgraph 数据查询系统
+          </Title>
+          <div style={{ width: 60 }}></div> {/* 右侧占位元素 */}
+        </div>
 
         <Card>
           <Descriptions
