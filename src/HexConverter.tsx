@@ -1,38 +1,36 @@
 import React, { useState } from "react";
-import { Card, Input, Button, Space, message } from "antd";
-import { CopyOutlined } from "@ant-design/icons";
+import { Card, Input, Button, Space, message, Select, Row, Col } from "antd";
+import { CopyOutlined, DeleteOutlined } from "@ant-design/icons";
+import {
+  textToHexAdvanced,
+  hexToText,
+  xorEncryption,
+  caesarEncryption,
+  AESDecrypt,
+  byteShiftEncryption,
+} from "./utils/utils";
 
 const { TextArea } = Input;
-// 更完整的版本，支持自定义前缀和格式
-function textToHexAdvanced(inputText: string, prefix = "0x") {
-  // 将字符串转换为UTF-8字节数组
-  const encoder = new TextEncoder();
-  const utf8Bytes = encoder.encode(inputText);
+const { Option } = Select;
 
-  // 将字节数组转换为16进制
-  const hex = Array.from(utf8Bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+// 定义加密方式选项
+const ENCRYPTION_OPTIONS = [
+  { label: "无加密（默认）", value: "none" },
+  { label: "XOR加密", value: "xor" },
+  { label: "凯撒加密", value: "caesar" },
+  { label: "字节移位加密", value: "byteShift" },
+  { label: "AES加密", value: "aes" },
+];
 
-  return prefix + hex;
-}
-// 反编译函数：16进制转文本
-function hexToText(hexString: string) {
-  const cleanHex = hexString.replace(/^0x/, "");
+// 定义解密方式选项（与加密方式对应）
+const DECRYPTION_OPTIONS = [
+  { label: "无解密（默认）", value: "none" },
+  { label: "XOR解密", value: "xor" },
+  { label: "凯撒解密", value: "caesar" },
+  { label: "字节移位解密", value: "byteShift" },
+  { label: "AES解密", value: "aes" },
+];
 
-  if (cleanHex.length % 2 !== 0) {
-    throw new Error("16进制字符串长度必须是偶数");
-  }
-
-  let result = "";
-  for (let i = 0; i < cleanHex.length; i += 2) {
-    const hexPair = cleanHex.substr(i, 2);
-    const charCode = parseInt(hexPair, 16);
-    result += String.fromCharCode(charCode);
-  }
-
-  return result;
-}
 // 反编译函数：16进制转文本
 function hexToTextEvent(hexString: string) {
   const cleanHex = hexString.replace(/^0x/, "");
@@ -59,10 +57,18 @@ function hexToTextEvent(hexString: string) {
     return hexToText(hexString);
   }
 }
+
 const HexConverter: React.FC = () => {
   const [inputText, setInputText] = useState<string>("");
   const [hexText, setHexText] = useState<string>("");
   const [textHex, setTextHex] = useState<string>("");
+  const [encryptionMethod, setEncryptionMethod] = useState<string>("none");
+  const [decryptionMethod, setDecryptionMethod] = useState<string>("none");
+  
+  // 加密结果状态
+  const [encryptedHexText, setEncryptedHexText] = useState<string>("");
+  const [decryptedText, setDecryptedText] = useState<string>("");
+  
   const [messageApi, contextHolder] = message.useMessage();
 
   const convertToHex = () => {
@@ -72,22 +78,46 @@ const HexConverter: React.FC = () => {
     }
 
     try {
-      // 将文本转换为16进制
-      const result = textToHexAdvanced(inputText);
-      setHexText(result);
+      // 默认转换（无加密）
+      const defaultResult = textToHexAdvanced(inputText);
+      setHexText(defaultResult);
+      
+      // 加密转换
+      let encryptedResult = "";
+      switch (encryptionMethod) {
+        case "none":
+          encryptedResult = textToHexAdvanced(inputText);
+          break;
+        case "xor":
+          encryptedResult = xorEncryption(inputText);
+          break;
+        case "caesar":
+          encryptedResult = caesarEncryption(inputText);
+          break;
+        case "byteShift":
+          encryptedResult = byteShiftEncryption(inputText);
+          break;
+        case "aes":
+          encryptedResult = AESDecrypt(inputText, false);
+          break;
+        default:
+          encryptedResult = textToHexAdvanced(inputText);
+      }
+      
+      setEncryptedHexText(encryptedResult);
     } catch (error) {
       messageApi.error("转换过程中发生错误: " + (error as Error).message);
     }
   };
 
-  const copyToClipboard = () => {
-    if (!hexText) {
+  const copyToClipboard = (text: string) => {
+    if (!text) {
       message.warning("没有内容可复制");
       return;
     }
 
     navigator.clipboard
-      .writeText(hexText)
+      .writeText(text)
       .then(() => {
         message.success("已成功复制到剪贴板");
       })
@@ -95,18 +125,62 @@ const HexConverter: React.FC = () => {
         message.error("复制失败");
       });
   };
+
+  // 清空所有输入和输出
+  const clearAll = () => {
+    setInputText("");
+    setHexText("");
+    setTextHex("");
+    setEncryptedHexText("");
+    setDecryptedText("");
+  };
+
   // 反编译函数：将16进制字符串转换回原始文本
-  const hexToText = (hexString: string) => {
-    const result = hexToTextEvent(hexString);
-    console.log(result, hexString);
-    setTextHex(result);
-    return result;
+  const convertHexToText = (hexString: string, isEncrypted: boolean = false) => {
+    if (!hexString) {
+      messageApi.warning("请输入要转换的16进制文本");
+      return;
+    }
+
+    try {
+      if (!isEncrypted) {
+        // 默认转换（无解密）
+        const result = hexToTextEvent(hexString);
+        setTextHex(result);
+      } else {
+        // 解密转换
+        let result = "";
+        switch (decryptionMethod) {
+          case "none":
+            result = hexToTextEvent(hexString);
+            break;
+          case "xor":
+            result = xorEncryption(hexString, "defaultKey123", true);
+            break;
+          case "caesar":
+            result = caesarEncryption(hexString, 7, true);
+            break;
+          case "byteShift":
+            result = byteShiftEncryption(hexString, [3, 7, 11, 13], true);
+            break;
+          case "aes":
+            result = AESDecrypt(hexString, true);
+            break;
+          default:
+            result = hexToTextEvent(hexString);
+        }
+        
+        setDecryptedText(result);
+      }
+    } catch (error) {
+      messageApi.error("反编译过程中发生错误: " + (error as Error).message);
+    }
   };
 
   return (
     <div className="page-container">
       {contextHolder}
-      <Card title="数据转换工具" style={{ maxWidth: 800, margin: "0 auto" }}>
+      <Card title="数据转换工具" style={{ maxWidth: 1200, margin: "0 auto" }}>
         <Space direction="vertical" style={{ width: "100%" }} size="large">
           <div>
             <div style={{ marginBottom: 8 }}>输入文本:</div>
@@ -118,50 +192,119 @@ const HexConverter: React.FC = () => {
             />
           </div>
 
-          <Button type="primary" onClick={convertToHex}>
-            将数据转成16进制
-          </Button>
+          <Space>
+            <Button type="primary" onClick={convertToHex}>
+              将数据转成16进制
+            </Button>
+            <Button icon={<DeleteOutlined />} onClick={clearAll}>
+              清空
+            </Button>
+          </Space>
 
+          {/* 默认转换区域（无加密） */}
           <div>
-            <div style={{ marginBottom: 8, position: "relative" }}>
-              16进制结果:
-              <Button
-                type="text"
-                icon={<CopyOutlined />}
-                onClick={copyToClipboard}
-                style={{ position: "absolute", right: 0, top: 0 }}
-              />
-            </div>
-            <TextArea
-              rows={6}
-              placeholder="转换后的16进制数据将显示在这里"
-              value={hexText}
-              readOnly
-            />
+            <h3>默认转换（无加密）</h3>
+            <Row gutter={16}>
+              <Col span={12}>
+                <div style={{ marginBottom: 8, position: "relative" }}>
+                  16进制结果:
+                  <Button
+                    type="text"
+                    icon={<CopyOutlined />}
+                    onClick={() => copyToClipboard(hexText)}
+                    style={{ position: "absolute", right: 0, top: 0 }}
+                  />
+                </div>
+                <TextArea
+                  rows={6}
+                  placeholder="转换后的16进制数据将显示在这里"
+                  value={hexText}
+                  onChange={(e) => setHexText(e.target.value)}
+                />
+                <Button
+                  type="primary"
+                  onClick={() => convertHexToText(hexText, false)}
+                  style={{ marginTop: 8 }}
+                >
+                  将16进制转成文本
+                </Button>
+              </Col>
+              <Col span={12}>
+                <div style={{ marginBottom: 8 }}>反编译结果:</div>
+                <TextArea
+                  rows={6}
+                  placeholder="转换后的文本将显示在这里"
+                  value={textHex}
+                  readOnly
+                />
+              </Col>
+            </Row>
           </div>
 
-          <Button
-            type="primary"
-            onClick={() => {
-              if (hexText.length <= 0) {
-                messageApi.error("没有反编译内容");
-              }
-              console.log("666", hexText);
-              hexToText(hexText);
-            }}
-          >
-            将数据转成16进制
-          </Button>
+          {/* 加密转换区域 */}
           <div>
-            <div style={{ marginBottom: 8, position: "relative" }}>
-              16进制反编译结果:
-            </div>
-            <TextArea
-              rows={6}
-              placeholder="转换后的16进制数据将显示在这里"
-              value={textHex}
-              readOnly
-            />
+            <h3>加密转换</h3>
+            <Row gutter={16}>
+              <Col span={12}>
+                <div style={{ marginBottom: 8 }}>加密方式:</div>
+                <Select
+                  style={{ width: "100%", marginBottom: 8 }}
+                  value={encryptionMethod}
+                  onChange={setEncryptionMethod}
+                >
+                  {ENCRYPTION_OPTIONS.map(option => (
+                    <Option key={option.value} value={option.value}>
+                      {option.label}
+                    </Option>
+                  ))}
+                </Select>
+                
+                <div style={{ marginBottom: 8, position: "relative" }}>
+                  16进制结果:
+                  <Button
+                    type="text"
+                    icon={<CopyOutlined />}
+                    onClick={() => copyToClipboard(encryptedHexText)}
+                    style={{ position: "absolute", right: 0, top: 0 }}
+                  />
+                </div>
+                <TextArea
+                  rows={6}
+                  placeholder="加密后的16进制数据将显示在这里"
+                  value={encryptedHexText}
+                  onChange={(e) => setEncryptedHexText(e.target.value)}
+                />
+                <Button
+                  type="primary"
+                  onClick={() => convertHexToText(encryptedHexText, true)}
+                  style={{ marginTop: 8 }}
+                >
+                  将16进制转成文本（解密）
+                </Button>
+              </Col>
+              <Col span={12}>
+                <div style={{ marginBottom: 8 }}>解密方式:</div>
+                <Select
+                  style={{ width: "100%", marginBottom: 8 }}
+                  value={decryptionMethod}
+                  onChange={setDecryptionMethod}
+                >
+                  {DECRYPTION_OPTIONS.map(option => (
+                    <Option key={option.value} value={option.value}>
+                      {option.label}
+                    </Option>
+                  ))}
+                </Select>
+                
+                <div style={{ marginBottom: 8 }}>解密结果:</div>
+                <TextArea
+                  rows={6}
+                  placeholder="解密后的文本将显示在这里"
+                  value={decryptedText}
+                  readOnly
+                />
+              </Col>
+            </Row>
           </div>
         </Space>
       </Card>
