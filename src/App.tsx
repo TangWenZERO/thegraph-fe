@@ -16,6 +16,7 @@ import {
   Card,
   Descriptions,
   Typography,
+  Input,
 } from "antd";
 import type { TableColumnsType } from "antd";
 import { useNavigate } from "react-router-dom";
@@ -81,6 +82,39 @@ interface EntityData {
   blockTimestamp: string;
   transactionHash: string;
 }
+
+// 金额格式化函数
+const formatAmount = (amount: string | undefined): string => {
+  if (!amount) return "0";
+  
+  try {
+    // USDT 有 6 位小数
+    const decimals = 6;
+    const amountBigInt = BigInt(amount);
+    const divisor = 10n ** BigInt(decimals);
+    
+    const integerPart = amountBigInt / divisor;
+    const fractionalPart = amountBigInt % divisor;
+    
+    // 格式化整数部分，添加千位分隔符
+    const formattedInteger = integerPart.toLocaleString();
+    
+    // 格式化小数部分，确保有6位数字
+    const fractionalString = fractionalPart.toString().padStart(decimals, '0');
+    
+    // 移除末尾的0，但保留至少一位小数（如果有的话）
+    const trimmedFractional = fractionalString.replace(/0+$/, '');
+    
+    if (trimmedFractional === '') {
+      return formattedInteger;
+    }
+    
+    return `${formattedInteger}.${trimmedFractional}`;
+  } catch (error) {
+    console.error("金额格式化错误:", error);
+    return amount || "0";
+  }
+};
 
 function App() {
   const [form] = Form.useForm();
@@ -164,6 +198,7 @@ function App() {
             title: "发行数量",
             dataIndex: "amount",
             key: "amount",
+            render: (amount: string) => formatAmount(amount),
           },
           ...baseColumns.slice(1),
         ];
@@ -175,6 +210,7 @@ function App() {
             title: "赎回数量",
             dataIndex: "amount",
             key: "amount",
+            render: (amount: string) => formatAmount(amount),
           },
           ...baseColumns.slice(1),
         ];
@@ -207,6 +243,12 @@ function App() {
             title: "最大费用",
             dataIndex: "maxFee",
             key: "maxFee",
+            width: "16%",
+            render: (text: string) => (
+              <div style={{ wordWrap: "break-word", wordBreak: "break-all" }}>
+                {text}
+              </div>
+            ),
           },
           ...baseColumns.slice(1),
         ];
@@ -228,6 +270,7 @@ function App() {
             title: "销毁余额",
             dataIndex: "_balance",
             key: "_balance",
+            render: (balance: string) => formatAmount(balance),
           },
           ...baseColumns.slice(1),
         ];
@@ -256,18 +299,29 @@ function App() {
             title: "发送方",
             dataIndex: "from",
             key: "from",
-            ellipsis: true,
+            width: "20%",
+            render: (text: string) => (
+              <div style={{ wordWrap: "break-word", wordBreak: "break-all" }}>
+                {text}
+              </div>
+            ),
           },
           {
             title: "接收方",
             dataIndex: "to",
             key: "to",
-            ellipsis: true,
+            width: "20%",
+            render: (text: string) => (
+              <div style={{ wordWrap: "break-word", wordBreak: "break-all" }}>
+                {text}
+              </div>
+            ),
           },
           {
             title: "转账金额",
             dataIndex: "value",
             key: "value",
+            render: (value: string) => formatAmount(value),
           },
           ...baseColumns.slice(1),
         ];
@@ -305,9 +359,9 @@ function App() {
             dataIndex: "value",
             key: "value",
             width: "20%",
-            render: (text: string) => (
+            render: (value: string) => (
               <div style={{ wordWrap: "break-word", wordBreak: "break-all" }}>
-                {text}
+                {formatAmount(value)}
               </div>
             ),
           },
@@ -328,17 +382,39 @@ function App() {
   const buildQuery = (values: {
     entityType: string;
     timeRange?: [moment.Moment, moment.Moment];
+    from?: string;
+    to?: string;
   }) => {
-    const { entityType, timeRange } = values;
+    const { entityType, timeRange, from, to } = values;
 
-    let whereClause = "";
+    // 构建where条件
+    const whereConditions: string[] = [];
+    
+    // 时间范围条件
     if (timeRange && timeRange.length === 2) {
       const [start, end] = timeRange;
       if (start && end) {
         const startTime = Math.floor(start.valueOf() / 1000);
         const endTime = Math.floor(end.valueOf() / 1000);
-        whereClause = `where: { blockTimestamp_gte: "${startTime}", blockTimestamp_lte: "${endTime}" }`;
+        whereConditions.push(`blockTimestamp_gte: "${startTime}"`);
+        whereConditions.push(`blockTimestamp_lte: "${endTime}"`);
       }
+    }
+    
+    // 发送方地址条件
+    if (from) {
+      whereConditions.push(`from: "${from}"`);
+    }
+    
+    // 接收方地址条件
+    if (to) {
+      whereConditions.push(`to: "${to}"`);
+    }
+    
+    // 组合where条件
+    let whereClause = "";
+    if (whereConditions.length > 0) {
+      whereClause = `where: { ${whereConditions.join(", ")} }`;
     }
 
     // 根据实体类型确定需要查询的字段
@@ -392,6 +468,9 @@ function App() {
     entityType: string;
     limit: number;
     orderDirection: string;
+    timeRange?: [moment.Moment, moment.Moment];
+    from?: string;
+    to?: string;
   }) => {
     setLoading(true);
     try {
@@ -446,10 +525,7 @@ function App() {
             alignItems: "center",
           }}
         >
-          <Button 
-            type="primary" 
-            onClick={() => navigate('/hex-converter')}
-          >
+          <Button type="primary" onClick={() => navigate("/hex-converter")}>
             数据转化
           </Button>
           <Title
@@ -548,6 +624,28 @@ function App() {
                     placeholder={["开始时间", "结束时间"]}
                     style={{ width: "100%" }}
                   />
+                </Form.Item>
+              </Col>
+              
+              <Col xs={24} sm={12} md={6}>
+                <Form.Item
+                  name="from"
+                  label="发送方"
+                  labelCol={{ span: 8 }}
+                  wrapperCol={{ span: 16 }}
+                >
+                  <Input placeholder="请输入发送方地址" />
+                </Form.Item>
+              </Col>
+              
+              <Col xs={24} sm={12} md={6}>
+                <Form.Item
+                  name="to"
+                  label="接收方"
+                  labelCol={{ span: 8 }}
+                  wrapperCol={{ span: 16 }}
+                >
+                  <Input placeholder="请输入接收方地址" />
                 </Form.Item>
               </Col>
             </Row>
